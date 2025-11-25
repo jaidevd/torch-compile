@@ -28,9 +28,6 @@ yapf = ">=0.40.2"
 onnx = ">=1.17.0"
 onnxruntime = "1.19.0"
 
-[tool.poetry.scripts]
-inference-demo = "inference_demo:main"
-
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
