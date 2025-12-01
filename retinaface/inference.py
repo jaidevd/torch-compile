@@ -10,7 +10,8 @@ from skimage import io
 
 from layers import PriorBox
 from models import RetinaFace
-from utils.box_utils import decode, decode_landmarks, nms
+from utils.box_utils import decode, decode_landmarks
+from torchvision.ops import nms
 from utils.general import draw_detections
 
 RGB_MEAN = (104, 117, 123)
@@ -43,17 +44,6 @@ def get_device() -> torch.device:
     return torch.device("cpu")
 
 
-def load_model():
-    """Load a RetinaFace model and its config."""
-    device = get_device()
-    model = RetinaFace(cfg=CONFIG).to(device)
-    state_dict = torch.load(
-        "weights/retinaface_mv2.pth", map_location=device, weights_only=True)
-    model.load_state_dict(state_dict)
-    model.eval()
-    return model
-
-
 def prepare_image(image_path: str, device: torch.device):
     """Load and normalize an image for RetinaFace inference."""
     original_image = io.imread(image_path)
@@ -69,59 +59,55 @@ def prepare_image(image_path: str, device: torch.device):
     return original_image, image, img_height, img_width
 
 
-def detect_faces(
-    model: RetinaFace,
-    image: torch.Tensor,
-    img_height: int,
-    img_width: int,
-    device: torch.device,
-    conf_threshold: float = 0.02,
-    nms_threshold: float = 0.4,
-    pre_nms_topk: int = 5000,
-    post_nms_topk: int = 750,
-) -> np.ndarray:
-    """Run RetinaFace on an image tensor and return decoded detections."""
-    with torch.no_grad():
-        loc, conf, landmarks = model(image)
+class FaceDetector(torch.nn.Module):
 
-    loc = loc.squeeze(0)
-    conf = conf.squeeze(0)
-    landmarks = landmarks.squeeze(0)
+    def __init__(self, config, conf_threshold=0.02, nms_threshold=0.4, pre_nms_topk=5000, post_nms_topk=750):
+        super().__init__()
+        self.config = config
+        self.device = get_device()
+        self.conf_threshold = conf_threshold
+        self.nms_threshold = nms_threshold
+        self.pre_nms_topk = pre_nms_topk
+        self.post_nms_topk = post_nms_topk
+        self.retinaface = RetinaFace(cfg=config).to(self.device)
+        state_dict = torch.load(
+            "weights/retinaface_mv2.pth", map_location=self.device, weights_only=True)
+        self.retinaface.load_state_dict(state_dict)
 
-    priorbox = PriorBox(CONFIG, image_size=(img_height, img_width))
-    priors = priorbox.generate_anchors().to(device)
+    def forward(self, image, image_wh):
+        loc, conf, landmarks = self.retinaface(image)
+        loc = loc.squeeze(0)
+        conf = conf.squeeze(0)
+        landmarks = landmarks.squeeze(0)
 
-    boxes = decode(loc, priors, CONFIG["variance"])
-    landmarks = decode_landmarks(landmarks, priors, CONFIG["variance"])
+        priorbox = PriorBox(self.config, image_size=image_wh[::-1])
+        priors = priorbox.generate_anchors().to(self.device)
 
-    bbox_scale = torch.tensor([img_width, img_height] * 2, device=device)
-    boxes = (boxes * bbox_scale).cpu().numpy()
+        boxes = decode(loc, priors, self.config["variance"])
+        landmarks = decode_landmarks(landmarks, priors, self.config["variance"])
 
-    landmark_scale = torch.tensor([img_width, img_height] * 5, device=device)
-    landmarks = (landmarks * landmark_scale).cpu().numpy()
+        bbox_scale = torch.tensor(image_wh * 2, device=self.device)
+        boxes = boxes * bbox_scale
 
-    scores = conf.cpu().numpy()[:, 1]
+        landmark_scale = torch.tensor(image_wh * 5, device=self.device)
+        landmarks = (landmarks * landmark_scale)
 
-    inds = scores > conf_threshold
-    boxes = boxes[inds]
-    landmarks = landmarks[inds]
-    scores = scores[inds]
+        scores = conf[:, 1]
+        inds = scores > self.conf_threshold
+        boxes = boxes[inds]
+        landmarks = landmarks[inds]
+        scores = scores[inds]
 
-    order = scores.argsort()[::-1][:pre_nms_topk]
-    boxes, landmarks, scores = boxes[order], landmarks[order], scores[order]
+        order = scores.argsort(descending=True)[:self.pre_nms_topk]
+        boxes, landmarks, scores = boxes[order], landmarks[order], scores[order]
 
-    detections = np.hstack(
-        (boxes, scores[:, np.newaxis])
-    ).astype(np.float32, copy=False)
-    keep = nms(detections, nms_threshold)
+        keep = nms(boxes, scores, self.nms_threshold)[:self.post_nms_topk]
 
-    detections = detections[keep]
-    landmarks = landmarks[keep]
+        detections = boxes[keep]
+        landmarks = landmarks[keep]
+        scores = scores[keep]
 
-    detections = detections[:post_nms_topk]
-    landmarks = landmarks[:post_nms_topk]
-
-    return np.concatenate((detections, landmarks), axis=1)
+        return torch.cat((detections, scores.reshape(-1, 1), landmarks), axis=1)
 
 
 def main(
@@ -132,26 +118,20 @@ def main(
     """Detect faces in the provided image and visualize bounding boxes."""
     torch_device = get_device()
 
-    model = load_model()
     original_image, image_tensor, img_height, img_width = prepare_image(
         DEFAULT_IMAGE, torch_device
     )
 
-    # Tracing
     with torch.no_grad():
-        traced_model = torch.jit.trace(model, image_tensor)
-
-    detections = detect_faces(
-        traced_model,
-        image_tensor,
-        img_height,
-        img_width,
-        torch_device,
-        conf_threshold=conf_threshold,
-        nms_threshold=nms_threshold,
-    )
+        model = FaceDetector(
+            config=CONFIG,
+            conf_threshold=conf_threshold,
+            nms_threshold=nms_threshold,
+        ).eval()
+        detections = model(image_tensor, (img_width, img_height)).cpu().numpy()
 
     annotated = original_image.copy()
+
     draw_detections(annotated, detections, vis_threshold)
     annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
     plt.figure()
