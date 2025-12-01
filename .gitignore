@@ -83,3 +83,5 @@ weights/*.pt
 weights/*.pth
 wheels/
 widerface_evaluation
+
+**/weights/*.pth
