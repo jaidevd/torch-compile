@@ -83,7 +83,7 @@ class FaceDetector(torch.nn.Module):
         conf = conf.squeeze(0)
         landmarks = landmarks.squeeze(0)
 
-        priorbox = PriorBox(self.config, image_size=image_wh[::-1])
+        priorbox = PriorBox(self.config, image_size=torch.flip(image_wh, (0,)))
         priors = priorbox.generate_anchors().to(self.device)
 
         boxes = decode(loc, priors, self.config["variance"])
@@ -119,8 +119,8 @@ def trace():
         DEFAULT_IMAGE, torch_device
     )
     model = FaceDetector(config=CONFIG).eval()
-    return torch.jit.trace_module(
-        model, {"forward": (image_tensor, torch.tensor((img_width, img_height)))}
+    return torch.jit.trace(
+        model, (image_tensor, torch.tensor((img_width, img_height)))
     )
 
 
