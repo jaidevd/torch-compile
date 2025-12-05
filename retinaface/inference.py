@@ -61,7 +61,9 @@ def prepare_image(image_path: str, device: torch.device):
 
 class FaceDetector(torch.nn.Module):
 
-    def __init__(self, config, conf_threshold=0.02, nms_threshold=0.4, pre_nms_topk=5000, post_nms_topk=750):
+    def __init__(
+        self, config, conf_threshold=0.02, nms_threshold=0.4, pre_nms_topk=5000, post_nms_topk=750
+    ):
         super().__init__()
         self.config = config
         self.device = get_device()
@@ -71,7 +73,8 @@ class FaceDetector(torch.nn.Module):
         self.post_nms_topk = post_nms_topk
         self.retinaface = RetinaFace(cfg=config).to(self.device)
         state_dict = torch.load(
-            "weights/retinaface_mv2.pth", map_location=self.device, weights_only=True)
+            "weights/retinaface_mv2.pth", map_location=self.device, weights_only=True
+        )
         self.retinaface.load_state_dict(state_dict)
 
     def forward(self, image, image_wh):
@@ -98,16 +101,27 @@ class FaceDetector(torch.nn.Module):
         landmarks = landmarks[inds]
         scores = scores[inds]
 
-        order = scores.argsort(descending=True)[:self.pre_nms_topk]
+        order = scores.argsort(descending=True)[: self.pre_nms_topk]
         boxes, landmarks, scores = boxes[order], landmarks[order], scores[order]
 
-        keep = nms(boxes, scores, self.nms_threshold)[:self.post_nms_topk]
+        keep = nms(boxes, scores, self.nms_threshold)[: self.post_nms_topk]
 
         detections = boxes[keep]
         landmarks = landmarks[keep]
         scores = scores[keep]
 
         return torch.cat((detections, scores.reshape(-1, 1), landmarks), axis=1)
+
+
+def trace():
+    torch_device = get_device()
+    original_image, image_tensor, img_height, img_width = prepare_image(
+        DEFAULT_IMAGE, torch_device
+    )
+    model = FaceDetector(config=CONFIG).eval()
+    return torch.jit.trace_module(
+        model, {"forward": (image_tensor, torch.tensor((img_width, img_height)))}
+    )
 
 
 def main(
@@ -141,4 +155,4 @@ def main(
 
 
 if __name__ == "__main__":
-    main()
+    traced = trace()
