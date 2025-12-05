@@ -17,7 +17,7 @@ class PriorBox:
         feature_maps = torch.tensor(image_size).tile(
             len(self.steps), 1
         ) / torch.tensor(self.steps).reshape(-1, 1)
-        self.feature_maps = torch.ceil(feature_maps)
+        self.feature_maps = torch.ceil(feature_maps).int()
 
     def generate_anchors(self) -> torch.Tensor:
         """Generate anchor boxes based on configuration and image size"""
