@@ -89,11 +89,12 @@ class FaceDetector(torch.nn.Module):
         boxes = decode(loc, priors, self.config["variance"])
         landmarks = decode_landmarks(landmarks, priors, self.config["variance"])
 
-        bbox_scale = torch.tensor(image_wh * 2, device=self.device)
-        boxes = boxes * bbox_scale
+        # bbox_scale = torch.tensor(image_wh * 2, device=self.device)
+        image_wh = image_wh.to(self.device)
+        boxes = boxes * torch.tile(image_wh, (1, 2))
 
-        landmark_scale = torch.tensor(image_wh * 5, device=self.device)
-        landmarks = (landmarks * landmark_scale)
+        # landmark_scale = torch.tensor(image_wh * 5, device=self.device)
+        landmarks = landmarks * torch.tile(image_wh, (1, 5))
 
         scores = conf[:, 1]
         inds = scores > self.conf_threshold
@@ -125,6 +126,7 @@ def trace():
 
 
 def main(
+    model=None,
     vis_threshold: float = 0.6,
     conf_threshold: float = 0.02,
     nms_threshold: float = 0.4,
@@ -135,14 +137,16 @@ def main(
     original_image, image_tensor, img_height, img_width = prepare_image(
         DEFAULT_IMAGE, torch_device
     )
-
-    with torch.no_grad():
+    if model is not None:
         model = FaceDetector(
             config=CONFIG,
             conf_threshold=conf_threshold,
             nms_threshold=nms_threshold,
         ).eval()
-        detections = model(image_tensor, (img_width, img_height)).cpu().numpy()
+    with torch.no_grad():
+        detections = model(
+            image_tensor, torch.tensor((img_width, img_height))
+        ).cpu().numpy()
 
     annotated = original_image.copy()
 
@@ -156,3 +160,4 @@ def main(
 
 if __name__ == "__main__":
     traced = trace()
+    main(traced)
