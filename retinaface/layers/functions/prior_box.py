@@ -1,5 +1,3 @@
-import math
-import numpy as np
 from itertools import product
 
 import torch
@@ -13,9 +11,13 @@ class PriorBox:
         self.clip = cfg['clip']
         self.steps = cfg['steps']
         self.min_sizes = cfg['min_sizes']
-        self.feature_maps = [[
-            math.ceil(self.image_size[0]/step), math.ceil(self.image_size[1]/step)] for step in self.steps
-        ]
+        # self.feature_maps = [
+        #     [math.ceil(self.image_size[0]/step), math.ceil(self.image_size[1]/step)] for step in self.steps
+        # ]
+        feature_maps = torch.tensor(image_size).tile(
+            len(self.steps), 1
+        ) / torch.tensor(self.steps).reshape(-1, 1)
+        self.feature_maps = torch.ceil(feature_maps)
 
     def generate_anchors(self) -> torch.Tensor:
         """Generate anchor boxes based on configuration and image size"""
