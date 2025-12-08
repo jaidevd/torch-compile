@@ -17,20 +17,18 @@ class PriorBox:
     def generate_anchors(self) -> torch.Tensor:
         """Generate anchor boxes based on configuration and image size"""
         t_anchors = []
-        map_heights, map_widths = self.feature_maps.T
-        height, width = self.image_size
-        for k, (map_height, map_width) in enumerate(zip(map_heights, map_widths)):
+        for k, (map_height, map_width) in enumerate(self.feature_maps):
             step = self.steps[k]
 
-            xx = (torch.arange(map_width) + 0.5) * step / width
-            yy = (torch.arange(map_height) + 0.5) * step / height
+            xx = (torch.arange(map_width) + 0.5) * step
+            yy = (torch.arange(map_height) + 0.5) * step
+
             yy, xx = torch.meshgrid(yy, xx, indexing='ij')
             zz = torch.stack((xx.ravel(), yy.ravel()), dim=1)
-            zz = torch.repeat_interleave(zz, 2, dim=0)
+            zz = torch.repeat_interleave(zz, 2, dim=0) / self.image_size.flip(0)
 
-            s_kx = self.min_sizes[k] / width
-            s_ky = self.min_sizes[k] / height
-            skxy = torch.vstack((s_kx, s_ky)).T.tile(int(map_height * map_width), 1)
+            scaled_sizes = self.min_sizes[k].reshape(1, -1) / self.image_size.reshape(-1, 1)
+            skxy = scaled_sizes.flipud().T.tile(map_height * map_width, 1)
             t_anchors.append(torch.hstack((zz, skxy)))
 
         # back to torch land
