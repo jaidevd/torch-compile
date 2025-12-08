@@ -39,7 +39,7 @@ def get_device() -> torch.device:
     """Resolve a torch device string, preferring MPS then CUDA, else CPU."""
     if torch.backends.mps.is_available():
         return torch.device("mps")
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and torch.cuda.is_initialized():
         return torch.device("cuda")
     return torch.device("cpu")
 
