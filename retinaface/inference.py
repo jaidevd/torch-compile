@@ -8,7 +8,6 @@ import numpy as np
 import torch
 from skimage import io
 
-from layers import PriorBox
 from models import RetinaFace
 from utils.box_utils import decode, decode_landmarks
 from torchvision.ops import nms
@@ -83,8 +82,17 @@ class FaceDetector(torch.nn.Module):
         conf = conf.squeeze(0)
         landmarks = landmarks.squeeze(0)
 
-        priorbox = PriorBox(self.config, image_size=torch.flip(image_wh, (0,)))
-        priors = priorbox.generate_anchors().to(self.device)
+        image_size = torch.flip(image_wh, (0,))
+        steps = self.config['steps']
+        feature_maps = image_size.tile(
+            steps.shape[0], 1
+        ) / steps.reshape(-1, 1)
+        feature_maps = torch.ceil(feature_maps).int()
+
+        priors = []
+        for (map_height, map_width), step, min_size in zip(feature_maps, steps, self.config['min_sizes']):
+            priors.append(_generate_anchors(map_width, map_height, min_size, image_size, step))
+        priors = torch.vstack(priors).to(self.device)
 
         boxes = decode(loc, priors, self.config["variance"])
         landmarks = decode_landmarks(landmarks, priors, self.config["variance"])
@@ -112,6 +120,19 @@ class FaceDetector(torch.nn.Module):
         scores = scores[keep]
 
         return torch.cat((detections, scores.reshape(-1, 1), landmarks), axis=1)
+
+
+def _generate_anchors(map_width, map_height, min_size, image_size, step):
+    xx = (torch.arange(map_width) + 0.5) * step
+    yy = (torch.arange(map_height) + 0.5) * step
+
+    yy, xx = torch.meshgrid(yy, xx, indexing='ij')
+    zz = torch.stack((xx.ravel(), yy.ravel()), dim=1)
+    zz = torch.repeat_interleave(zz, 2, dim=0) / image_size.flip(0)
+
+    scaled_sizes = min_size.reshape(1, -1) / image_size.reshape(-1, 1)
+    skxy = scaled_sizes.flipud().T.tile(map_height * map_width, 1)
+    return torch.hstack((zz, skxy))
 
 
 def trace():
