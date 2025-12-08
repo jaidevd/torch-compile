@@ -16,7 +16,7 @@ class PriorBox:
         # ]
         feature_maps = image_size.tile(
             len(self.steps), 1
-        ) / torch.tensor(self.steps).reshape(-1, 1)
+        ) / self.steps.reshape(-1, 1)
         self.feature_maps = torch.ceil(feature_maps).int()
 
     def generate_anchors(self) -> torch.Tensor:
