@@ -14,7 +14,7 @@ from torchvision.ops import nms
 from utils.general import draw_detections
 
 RGB_MEAN = (104, 117, 123)
-DEFAULT_IMAGE = os.path.join("assets", "test.jpg")
+DEFAULT_IMAGE = "/tmp/f1.jpg"
 DEFAULT_WEIGHTS = os.path.join("weights", "retinaface_mv2.pth")
 CONFIG = {
     "name": "mobilenet_v2",
@@ -61,7 +61,12 @@ def prepare_image(image_path: str, device: torch.device):
 class FaceDetector(torch.nn.Module):
 
     def __init__(
-        self, config, conf_threshold=0.02, nms_threshold=0.4, pre_nms_topk=5000, post_nms_topk=750
+        self,
+        config,
+        conf_threshold=0.02,
+        nms_threshold=0.4,
+        pre_nms_topk=5000,
+        post_nms_topk=750,
     ):
         super().__init__()
         self.config = config
@@ -83,15 +88,17 @@ class FaceDetector(torch.nn.Module):
         landmarks = landmarks.squeeze(0)
 
         image_size = torch.flip(image_wh, (0,))
-        steps = self.config['steps']
-        feature_maps = image_size.tile(
-            steps.shape[0], 1
-        ) / steps.reshape(-1, 1)
+        steps = self.config["steps"]
+        feature_maps = image_size.tile(steps.shape[0], 1) / steps.reshape(-1, 1)
         feature_maps = torch.ceil(feature_maps).int()
 
         priors = []
-        for (map_height, map_width), step, min_size in zip(feature_maps, steps, self.config['min_sizes']):
-            priors.append(_generate_anchors(map_width, map_height, min_size, image_size, step))
+        for (map_height, map_width), step, min_size in zip(
+            feature_maps, steps, self.config["min_sizes"]
+        ):
+            priors.append(
+                _generate_anchors(map_width, map_height, min_size, image_size, step)
+            )
         priors = torch.vstack(priors).to(self.device)
 
         boxes = decode(loc, priors, self.config["variance"])
@@ -126,7 +133,7 @@ def _generate_anchors(map_width, map_height, min_size, image_size, step):
     xx = (torch.arange(map_width) + 0.5) * step
     yy = (torch.arange(map_height) + 0.5) * step
 
-    yy, xx = torch.meshgrid(yy, xx, indexing='ij')
+    yy, xx = torch.meshgrid(yy, xx, indexing="ij")
     zz = torch.stack((xx.ravel(), yy.ravel()), dim=1)
     zz = torch.repeat_interleave(zz, 2, dim=0) / image_size.flip(0)
 
@@ -141,9 +148,7 @@ def trace():
         DEFAULT_IMAGE, torch_device
     )
     model = FaceDetector(config=CONFIG).eval()
-    return torch.jit.trace(
-        model, (image_tensor, torch.tensor((img_width, img_height)))
-    )
+    return torch.jit.trace(model, (image_tensor, torch.tensor((img_width, img_height))))
 
 
 def main(
@@ -165,9 +170,9 @@ def main(
             nms_threshold=nms_threshold,
         ).eval()
     with torch.no_grad():
-        detections = model(
-            image_tensor, torch.tensor((img_width, img_height))
-        ).cpu().numpy()
+        detections = (
+            model(image_tensor, torch.tensor((img_width, img_height))).cpu().numpy()
+        )
 
     annotated = original_image.copy()
 
