@@ -14,7 +14,7 @@ class PriorBox:
         # self.feature_maps = [
         #     [math.ceil(self.image_size[0]/step), math.ceil(self.image_size[1]/step)] for step in self.steps
         # ]
-        feature_maps = torch.tensor(image_size).tile(
+        feature_maps = image_size.tile(
             len(self.steps), 1
         ) / torch.tensor(self.steps).reshape(-1, 1)
         self.feature_maps = torch.ceil(feature_maps).int()
