@@ -1,5 +1,3 @@
-from itertools import product
-
 import torch
 from typing import Tuple
 
@@ -18,39 +16,25 @@ class PriorBox:
 
     def generate_anchors(self) -> torch.Tensor:
         """Generate anchor boxes based on configuration and image size"""
-        anchors = []
+        t_anchors = []
         map_heights, map_widths = self.feature_maps.T
         height, width = self.image_size
         for k, (map_height, map_width) in enumerate(zip(map_heights, map_widths)):
             step = self.steps[k]
-            for i, j in product(range(map_height), range(map_width)):
-                # scale terms (N,)
-                s_kx = self.min_sizes[k] / width
-                s_ky = self.min_sizes[k] / height
 
-                # center terms (scalar)
-                dense_cx = (j + 0.5) * step / width
-                dense_cy = (i + 0.5) * step / height
+            xx = (torch.arange(map_width) + 0.5) * step / width
+            yy = (torch.arange(map_height) + 0.5) * step / height
+            yy, xx = torch.meshgrid(yy, xx, indexing='ij')
+            zz = torch.stack((xx.ravel(), yy.ravel()), dim=1)
+            zz = torch.repeat_interleave(zz, 2, dim=0)
 
-                # stack into (N, 4)
-                anchors.append(torch.stack([
-                    torch.full_like(s_kx, dense_cx),
-                    torch.full_like(s_ky, dense_cy),
-                    s_kx,
-                    s_ky
-                ], dim=1))
-
-                # for min_size in self.min_sizes[k]:
-                #     s_kx = min_size / self.image_size[1]
-                #     dense_cx = (j + 0.5) * step / self.image_size[1]
-
-                #     s_ky = min_size / self.image_size[0]
-                #     dense_cy = (i + 0.5) * step / self.image_size[0]
-
-                #     anchors += [dense_cx, dense_cy, s_kx, s_ky]
+            s_kx = self.min_sizes[k] / width
+            s_ky = self.min_sizes[k] / height
+            skxy = torch.vstack((s_kx, s_ky)).T.tile(int(map_height * map_width), 1)
+            t_anchors.append(torch.hstack((zz, skxy)))
 
         # back to torch land
-        output = torch.stack(anchors, 0).view(-1, 4)
+        t_output = torch.vstack(t_anchors)
         if self.clip:
-            output.clamp_(max=1, min=0)
-        return output
+            t_output.clamp_(max=1, min=0)
+        return t_output
