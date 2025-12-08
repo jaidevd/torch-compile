@@ -20,20 +20,37 @@ class PriorBox:
         """Generate anchor boxes based on configuration and image size"""
         anchors = []
         map_heights, map_widths = self.feature_maps.T
+        height, width = self.image_size
         for k, (map_height, map_width) in enumerate(zip(map_heights, map_widths)):
             step = self.steps[k]
             for i, j in product(range(map_height), range(map_width)):
-                for min_size in self.min_sizes[k]:
-                    s_kx = min_size / self.image_size[1]
-                    dense_cx = (j + 0.5) * step / self.image_size[1]
+                # scale terms (N,)
+                s_kx = self.min_sizes[k] / width
+                s_ky = self.min_sizes[k] / height
 
-                    s_ky = min_size / self.image_size[0]
-                    dense_cy = (i + 0.5) * step / self.image_size[0]
+                # center terms (scalar)
+                dense_cx = (j + 0.5) * step / width
+                dense_cy = (i + 0.5) * step / height
 
-                    anchors += [dense_cx, dense_cy, s_kx, s_ky]
+                # stack into (N, 4)
+                anchors.append(torch.stack([
+                    torch.full_like(s_kx, dense_cx),
+                    torch.full_like(s_ky, dense_cy),
+                    s_kx,
+                    s_ky
+                ], dim=1))
+
+                # for min_size in self.min_sizes[k]:
+                #     s_kx = min_size / self.image_size[1]
+                #     dense_cx = (j + 0.5) * step / self.image_size[1]
+
+                #     s_ky = min_size / self.image_size[0]
+                #     dense_cy = (i + 0.5) * step / self.image_size[0]
+
+                #     anchors += [dense_cx, dense_cy, s_kx, s_ky]
 
         # back to torch land
-        output = torch.Tensor(anchors).view(-1, 4)
+        output = torch.stack(anchors, 0).view(-1, 4)
         if self.clip:
             output.clamp_(max=1, min=0)
         return output

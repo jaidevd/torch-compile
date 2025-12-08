@@ -19,7 +19,7 @@ DEFAULT_IMAGE = os.path.join("assets", "test.jpg")
 DEFAULT_WEIGHTS = os.path.join("weights", "retinaface_mv2.pth")
 CONFIG = {
     "name": "mobilenet_v2",
-    "min_sizes": [[16, 32], [64, 128], [256, 512]],
+    "min_sizes": torch.tensor([[16, 32], [64, 128], [256, 512]]),
     "steps": torch.tensor([8, 16, 32]),
     "variance": [0.1, 0.2],
     "clip": False,
