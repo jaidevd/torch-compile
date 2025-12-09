@@ -14,7 +14,7 @@ from torchvision.ops import nms
 from utils.general import draw_detections
 
 RGB_MEAN = (104, 117, 123)
-DEFAULT_IMAGE = "/tmp/f1.jpg"
+DEFAULT_IMAGE = "assets/test.jpg"
 DEFAULT_WEIGHTS = os.path.join("weights", "retinaface_mv2.pth")
 CONFIG = {
     "name": "mobilenet_v2",
@@ -50,6 +50,7 @@ def prepare_image(image_path: str, device: torch.device):
 
     image = np.float32(original_image)
     img_height, img_width, _ = image.shape
+    image = cv2.resize(image, (640, 640))
 
     image -= RGB_MEAN
     image = image.transpose(2, 0, 1)  # HWC -> CHW
@@ -148,7 +149,7 @@ def trace():
         DEFAULT_IMAGE, torch_device
     )
     model = FaceDetector(config=CONFIG).eval()
-    return torch.jit.trace(model, (image_tensor, torch.tensor((img_width, img_height))))
+    return torch.jit.trace(model, (image_tensor, torch.tensor((640, 640))))
 
 
 def main(
@@ -171,10 +172,17 @@ def main(
         ).eval()
     with torch.no_grad():
         detections = (
-            model(image_tensor, torch.tensor((img_width, img_height))).cpu().numpy()
+            model(image_tensor, torch.tensor((640, 640))).cpu().numpy()
         )
 
     annotated = original_image.copy()
+    boxes = detections[:, :4]
+    boxes[:, ::2] = boxes[:, ::2] / 640 * img_width
+    boxes[:, 1::2] = boxes[:, 1::2] / 640 * img_height
+
+    landmarks = detections[:, 5:]
+    landmarks[:, ::2] = landmarks[:, ::2] / 640 * img_width
+    landmarks[:, 1::2] = landmarks[:, 1::2] / 640 * img_height
 
     draw_detections(annotated, detections, vis_threshold)
     annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
