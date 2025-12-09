@@ -44,19 +44,28 @@ def get_device() -> torch.device:
 
 
 def prepare_image(image_path: str, device: torch.device):
-    """Load and normalize an image for RetinaFace inference."""
+    """Load and normalize an image for RetinaFace inference.
+
+    Returns the original image, the normalized model input tensor, the original
+    height/width, and the padded square size used before resizing.
+    """
     original_image = io.imread(image_path)
     original_image = cv2.cvtColor(original_image, cv2.COLOR_RGB2BGR)
 
     image = np.float32(original_image)
     img_height, img_width, _ = image.shape
-    image = cv2.resize(image, (640, 640))
 
-    image -= RGB_MEAN
-    image = image.transpose(2, 0, 1)  # HWC -> CHW
-    image = torch.from_numpy(image).unsqueeze(0).to(device)
+    # Match the training pipeline: pad to square with mean value and resize to model size
+    long_side = max(img_height, img_width)
+    padded = np.empty((long_side, long_side, 3), dtype=np.float32)
+    padded[:] = RGB_MEAN
+    padded[:img_height, :img_width] = image
 
-    return original_image, image, img_height, img_width
+    resized = cv2.resize(padded, (CONFIG["image_size"], CONFIG["image_size"]))
+    resized -= RGB_MEAN
+    resized = torch.from_numpy(resized).permute(2, 0, 1).unsqueeze(0).to(device)
+
+    return original_image, resized, img_height, img_width, long_side
 
 
 class FaceDetector(torch.nn.Module):
@@ -139,13 +148,36 @@ def _generate_anchors(map_width, map_height, min_size, image_size, step):
     return torch.hstack((zz, skxy))
 
 
+def _rescale_detections(detections, img_width, img_height, padded_size, model_input_size):
+    """Map detections from model input space back to the original image size."""
+    if detections.size == 0:
+        return detections
+
+    detections = detections.copy()
+    scale = padded_size / model_input_size
+
+    boxes = detections[:, :4] * scale
+    boxes[:, 0::2] = boxes[:, 0::2].clip(0, img_width - 1)
+    boxes[:, 1::2] = boxes[:, 1::2].clip(0, img_height - 1)
+
+    landmarks = detections[:, 5:] * scale
+    landmarks = landmarks.reshape(-1, 5, 2)
+    landmarks[..., 0] = landmarks[..., 0].clip(0, img_width - 1)
+    landmarks[..., 1] = landmarks[..., 1].clip(0, img_height - 1)
+
+    detections[:, :4] = boxes
+    detections[:, 5:] = landmarks.reshape(-1, 10)
+    return detections
+
+
 def trace():
     torch_device = get_device()
-    original_image, image_tensor, img_height, img_width = prepare_image(
+    _, image_tensor, _, _, _ = prepare_image(
         DEFAULT_IMAGE, torch_device
     )
     model = FaceDetector(config=CONFIG).eval()
-    return torch.jit.trace(model, (image_tensor, torch.tensor((640, 640))))
+    model_input_size = CONFIG["image_size"]
+    return torch.jit.trace(model, (image_tensor, torch.tensor((model_input_size, model_input_size))))
 
 
 def main(
@@ -157,10 +189,11 @@ def main(
     """Detect faces in the provided image and visualize bounding boxes."""
     torch_device = get_device()
 
-    original_image, image_tensor, img_height, img_width = prepare_image(
+    original_image, image_tensor, img_height, img_width, padded_size = prepare_image(
         DEFAULT_IMAGE, torch_device
     )
-    if model is not None:
+    model_input_size = CONFIG["image_size"]
+    if model is None:
         model = FaceDetector(
             config=CONFIG,
             conf_threshold=conf_threshold,
@@ -168,17 +201,17 @@ def main(
         ).eval()
     with torch.no_grad():
         detections = (
-            model(image_tensor, torch.tensor((640, 640))).cpu().numpy()
+            model(image_tensor, torch.tensor((model_input_size, model_input_size))).cpu().numpy()
         )
 
     annotated = original_image.copy()
-    boxes = detections[:, :4]
-    boxes[:, ::2] = boxes[:, ::2] / 640 * img_width
-    boxes[:, 1::2] = boxes[:, 1::2] / 640 * img_height
-
-    landmarks = detections[:, 5:]
-    landmarks[:, ::2] = landmarks[:, ::2] / 640 * img_width
-    landmarks[:, 1::2] = landmarks[:, 1::2] / 640 * img_height
+    detections = _rescale_detections(
+        detections,
+        img_width=img_width,
+        img_height=img_height,
+        padded_size=padded_size,
+        model_input_size=model_input_size,
+    )
 
     draw_detections(annotated, detections, vis_threshold)
     annotated_rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
