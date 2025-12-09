@@ -81,6 +81,7 @@ class FaceDetector(torch.nn.Module):
             "weights/retinaface_mv2.pth", map_location=self.device, weights_only=True
         )
         self.retinaface.load_state_dict(state_dict)
+        self.min_sizes = torch.tensor([[16, 32], [64, 128], [256, 512]])
 
     def forward(self, image, image_wh):
         loc, conf, landmarks = self.retinaface(image)
@@ -94,22 +95,17 @@ class FaceDetector(torch.nn.Module):
         feature_maps = torch.ceil(feature_maps).int()
 
         priors = []
-        for (map_height, map_width), step, min_size in zip(
-            feature_maps, steps, self.config["min_sizes"]
-        ):
-            priors.append(
-                _generate_anchors(map_width, map_height, min_size, image_size, step)
-            )
+        priors.append(_generate_anchors(80, 80, self.min_sizes[0], image_size, 8))
+        priors.append(_generate_anchors(40, 40, self.min_sizes[1], image_size, 16))
+        priors.append(_generate_anchors(20, 20, self.min_sizes[2], image_size, 32))
         priors = torch.vstack(priors).to(self.device)
 
         boxes = decode(loc, priors, self.config["variance"])
         landmarks = decode_landmarks(landmarks, priors, self.config["variance"])
 
-        # bbox_scale = torch.tensor(image_wh * 2, device=self.device)
         image_wh = image_wh.to(self.device)
         boxes = boxes * torch.tile(image_wh, (1, 2))
 
-        # landmark_scale = torch.tensor(image_wh * 5, device=self.device)
         landmarks = landmarks * torch.tile(image_wh, (1, 5))
 
         scores = conf[:, 1]
