@@ -85,3 +85,7 @@ wheels/
 widerface_evaluation
 
 **/weights/*.pth
+
+.DS_Store
+
+NAFNet/experiments/pretrained_models/*.pth
