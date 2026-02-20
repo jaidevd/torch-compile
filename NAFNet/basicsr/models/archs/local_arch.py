@@ -27,9 +27,6 @@ class AvgPool2d(nn.Module):
         )
 
     def forward(self, x):
-        # hw = torch.tensor(x.shape[2:])
-        # h, w = x.size(-2), x.size(-1)
-        # hw = torch.stack((x.size(-2), x.size(-1)))
         hw = torch._shape_as_tensor(x)[-2:]  # .to(torch.int64)
         if self.kernel_size is None and self.base_size:
             train_size = self.train_size
@@ -45,8 +42,12 @@ class AvgPool2d(nn.Module):
             self.max_r1 = max(1, self.rs[0] * x.shape[2] // train_size[-2])
             self.max_r2 = max(1, self.rs[0] * x.shape[3] // train_size[-1])
 
-        if (self.kernel_size >= hw).all():
-            return F.adaptive_avg_pool2d(x, 1)
+
+        # print(self.kernel_size, hw)
+        # if (self.kernel_size >= hw).all():
+        #     print('Stopping...')
+        #     return F.adaptive_avg_pool2d(x, 1)
+        # print('Not stopping...')
 
         if self.fast_imp:  # Non-equivalent implementation but faster
             h, w = x.shape[2:]
