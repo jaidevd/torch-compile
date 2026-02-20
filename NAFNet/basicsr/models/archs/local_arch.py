@@ -31,9 +31,11 @@ class AvgPool2d(nn.Module):
             train_size = self.train_size
             if isinstance(self.base_size, int):
                 self.base_size = (self.base_size, self.base_size)
-            self.kernel_size = list(self.base_size)
-            self.kernel_size[0] = x.shape[2] * self.base_size[0] // train_size[-2]
-            self.kernel_size[1] = x.shape[3] * self.base_size[1] // train_size[-1]
+            self.kernel_size = torch.tensor(self.base_size)
+
+            # self.kernel_size[0] = x.shape[2] * self.base_size[0] // train_size[-2]
+            # self.kernel_size[1] = x.shape[3] * self.base_size[1] // train_size[-1]
+            self.kernel_size = torch.tensor(x.shape[2:]) * torch.tensor(self.base_size) // torch.tensor(train_size[-2:])
 
             # only used for fast implementation
             self.max_r1 = max(1, self.rs[0] * x.shape[2] // train_size[-2])
