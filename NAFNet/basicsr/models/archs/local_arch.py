@@ -27,21 +27,22 @@ class AvgPool2d(nn.Module):
         )
 
     def forward(self, x):
+        hw = torch.tensor(x.shape[2:])
         if self.kernel_size is None and self.base_size:
             train_size = self.train_size
             if isinstance(self.base_size, int):
                 self.base_size = (self.base_size, self.base_size)
-            self.kernel_size = torch.tensor(self.base_size)
+            # self.kernel_size = torch.tensor(self.base_size)
 
             # self.kernel_size[0] = x.shape[2] * self.base_size[0] // train_size[-2]
             # self.kernel_size[1] = x.shape[3] * self.base_size[1] // train_size[-1]
-            self.kernel_size = torch.tensor(x.shape[2:]) * torch.tensor(self.base_size) // torch.tensor(train_size[-2:])
+            self.kernel_size = hw * torch.tensor(self.base_size) // torch.tensor(train_size[-2:])
 
             # only used for fast implementation
             self.max_r1 = max(1, self.rs[0] * x.shape[2] // train_size[-2])
             self.max_r2 = max(1, self.rs[0] * x.shape[3] // train_size[-1])
 
-        if (torch.tensor(self.kernel_size) >= torch.tensor(x.shape[2:])).all():
+        if (self.kernel_size >= hw).all():
             return F.adaptive_avg_pool2d(x, 1)
 
         if self.fast_imp:  # Non-equivalent implementation but faster
@@ -63,7 +64,8 @@ class AvgPool2d(nn.Module):
             n, c, h, w = x.shape
             s = x.cumsum(dim=-1).cumsum_(dim=-2)
             s = torch.nn.functional.pad(s, (1, 0, 1, 0))  # pad 0 for convenience
-            k1, k2 = torch.tensor([[h, w], self.kernel_size]).amin(axis=1)
+            k1, k2 = torch.vstack([hw, self.kernel_size]).amin(axis=1)
+            # k1, k2 = torch.tensor([[h, w], self.kernel_size]).amin(axis=1)
             # k1, k2 = min(h, self.kernel_size[0]), min(w, self.kernel_size[1])
             s1, s2, s3, s4 = s[:, :, :-k1, :-k2], s[:, :, :-k1, k2:], s[:, :, k1:, :-k2], s[:, :, k1:, k2:]
             out = s4 + s1 - s2 - s3
