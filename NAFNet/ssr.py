@@ -28,10 +28,10 @@ def load_model(path="experiments/pretrained_models/NAFSSR-L_4x.pth"):
 if __name__ == "__main__":
     x_l, x_r, x = load_stereo_images("demo/lr_img_l.png", "demo/lr_img_r.png")
     model = load_model()
-    # print("Tracing...")
-    # traced = torch.jit.trace(model, (x,))
+    print("Tracing...")
     with torch.no_grad():
-        y = model(x)
+        traced = torch.jit.trace(model, (x,))
+        y = traced(x)
 
     y_l = y[0, :3]
     y_r = y[0, 3:]
