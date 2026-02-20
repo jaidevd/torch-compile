@@ -23,8 +23,10 @@ def load_model(path="experiments/pretrained_models/NAFNet-SIDD-width64.pth"):
 if __name__ == "__main__":
     x = load_image('demo/noisy.png')
     model = load_model()
+    print('Tracing...')
+    traced = torch.jit.trace(model, (x,))
     with torch.no_grad():
-        y = model(x)
+        y = traced(x)
     fig, ax = plt.subplots(nrows=1, ncols=2)
     ax[0].imshow(x[0].permute(1, 2, 0))
     ax[1].imshow(y[0].permute(1, 2, 0))
