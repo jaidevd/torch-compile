@@ -61,7 +61,8 @@ class AvgPool2d(nn.Module):
             n, c, h, w = x.shape
             s = x.cumsum(dim=-1).cumsum_(dim=-2)
             s = torch.nn.functional.pad(s, (1, 0, 1, 0))  # pad 0 for convenience
-            k1, k2 = min(h, self.kernel_size[0]), min(w, self.kernel_size[1])
+            k1, k2 = torch.tensor([[h, w], self.kernel_size]).amin(axis=1)
+            # k1, k2 = min(h, self.kernel_size[0]), min(w, self.kernel_size[1])
             s1, s2, s3, s4 = s[:, :, :-k1, :-k2], s[:, :, :-k1, k2:], s[:, :, k1:, :-k2], s[:, :, k1:, k2:]
             out = s4 + s1 - s2 - s3
             out = out / (k1 * k2)
