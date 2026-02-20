@@ -27,7 +27,10 @@ class AvgPool2d(nn.Module):
         )
 
     def forward(self, x):
-        hw = torch.tensor(x.shape[2:])
+        # hw = torch.tensor(x.shape[2:])
+        # h, w = x.size(-2), x.size(-1)
+        # hw = torch.stack((x.size(-2), x.size(-1)))
+        hw = torch._shape_as_tensor(x)[-2:]  # .to(torch.int64)
         if self.kernel_size is None and self.base_size:
             train_size = self.train_size
             if isinstance(self.base_size, int):
