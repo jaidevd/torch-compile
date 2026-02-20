@@ -39,7 +39,7 @@ class AvgPool2d(nn.Module):
             self.max_r1 = max(1, self.rs[0] * x.shape[2] // train_size[-2])
             self.max_r2 = max(1, self.rs[0] * x.shape[3] // train_size[-1])
 
-        if self.kernel_size[0] >= x.size(-2) and self.kernel_size[1] >= x.size(-1):
+        if (torch.tensor(self.kernel_size) >= torch.tensor(x.shape[2:])).all():
             return F.adaptive_avg_pool2d(x, 1)
 
         if self.fast_imp:  # Non-equivalent implementation but faster
