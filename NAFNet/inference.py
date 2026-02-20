@@ -108,8 +108,8 @@ def _show_images(
 def run_all(device: str = "cpu") -> Dict[str, str]:
     base = Path(__file__).resolve().parent
 
-    denoise_opt = base / "options/test/SIDD/NAFNet-width64.yml"
-    denoise_img = base / "demo/noisy.png"
+    # denoise_opt = base / "options/test/SIDD/NAFNet-width64.yml"
+    # denoise_img = base / "demo/noisy.png"
     deblur_opt = base / "options/test/GoPro/NAFNet-width64.yml"
     deblur_img = base / "demo/blurry.jpg"
     stereo_opt = base / "options/test/NAFSSR/NAFSSR-L_4x.yml"
@@ -117,13 +117,13 @@ def run_all(device: str = "cpu") -> Dict[str, str]:
     stereo_r = base / "demo/lr_img_r.png"
 
     # Denoise
-    orig, restored = _run_single_image(denoise_opt, denoise_img, device=device)
-    _show_images(
-        images=(orig, restored),
-        titles=("Noisy input", "Denoised (NAFNet)"),
-        cols=2,
-        figsize=(10, 4),
-    )
+    # orig, restored = _run_single_image(denoise_opt, denoise_img, device=device)
+    # _show_images(
+    #     images=(orig, restored),
+    #     titles=("Noisy input", "Denoised (NAFNet)"),
+    #     cols=2,
+    #     figsize=(10, 4),
+    # )
 
     # Deblur
     orig, restored = _run_single_image(deblur_opt, deblur_img, device=device)
@@ -151,4 +151,13 @@ def run_all(device: str = "cpu") -> Dict[str, str]:
 
 
 if __name__ == "__main__":
-    run_all(device="mps")
+    base = Path(__file__).resolve().parent
+    denoise_opt = base / "options/test/SIDD/NAFNet-width64.yml"
+    denoise_img = base / "demo/noisy.png"
+    orig, restored = _run_single_image(denoise_opt, denoise_img, device="mps")
+    _show_images(
+        images=(orig, restored),
+        titles=("Noisy input", "Denoised (NAFNet)"),
+        cols=2,
+        figsize=(10, 4),
+    )
