@@ -179,32 +179,10 @@ class SAM2ImagePredictor(torch.nn.Module):
             (64, 64),
         ]
 
-    @torch.no_grad()
-    def set_image(self, image) -> None:
-        """
-        Calculates the image embeddings for the provided image, allowing
-        masks to be predicted with the 'predict' method.
-
-        Arguments:
-          image (np.ndarray or PIL Image): The input image to embed in RGB format. The image should be in HWC format if np.ndarray, or WHC format if PIL Image
-          with pixel values in [0, 255].
-          image_format (str): The color format of the image, in ['RGB', 'BGR'].
-        """
-        # Transform the image to the form expected by the model
-        if isinstance(image, np.ndarray):
-            self._orig_hw = [image.shape[:2]]
-        elif isinstance(image, Image):
-            w, h = image.size
-            self._orig_hw = [(h, w)]
-        else:
-            raise NotImplementedError("Image format not supported")
-
+    def forward(self, image, org_hw, point_coords, point_labels):
+        self._orig_hw = [org_hw]
         input_image = self._transforms(image)
         input_image = input_image[None, ...].to(self.device)
-
-        assert (
-            len(input_image.shape) == 4 and input_image.shape[1] == 3
-        ), f"input_image must be of size 1x3xHxW, got {input_image.shape}"
         backbone_out = self.model.forward_image(input_image)
         _, vision_feats, _, _ = self.model._prepare_backbone_features(backbone_out)
         # Add no_mem_embed, which is added to the lowest rest feat. map during training on videos
@@ -216,63 +194,17 @@ class SAM2ImagePredictor(torch.nn.Module):
             for feat, feat_size in zip(vision_feats[::-1], self._bb_feat_sizes[::-1])
         ][::-1]
         self._features = {"image_embed": feats[-1], "high_res_feats": feats[:-1]}
-
-    def predict(
-        self,
-        point_coords=None,
-        point_labels=None,
-        box=None,
-        mask_input=None,
-        multimask_output: bool = True,
-        return_logits: bool = False,
-        normalize_coords=True,
-    ):
-        """
-        Predict masks for the given input prompts, using the currently set image.
-
-        Arguments:
-          point_coords (np.ndarray or None): A Nx2 array of point prompts to the
-            model. Each point is in (X,Y) in pixels.
-          point_labels (np.ndarray or None): A length N array of labels for the
-            point prompts. 1 indicates a foreground point and 0 indicates a
-            background point.
-          box (np.ndarray or None): A length 4 array given a box prompt to the
-            model, in XYXY format.
-          mask_input (np.ndarray): A low resolution mask input to the model, typically
-            coming from a previous prediction iteration. Has form 1xHxW, where
-            for SAM, H=W=256.
-          multimask_output (bool): If true, the model will return three masks.
-            For ambiguous input prompts (such as a single click), this will often
-            produce better masks than a single prediction. If only a single
-            mask is needed, the model's predicted quality score can be used
-            to select the best mask. For non-ambiguous prompts, such as multiple
-            input prompts, multimask_output=False can give better results.
-          return_logits (bool): If true, returns un-thresholded masks logits
-            instead of a binary mask.
-          normalize_coords (bool): If true, the point coordinates will be normalized to the range [0,1] and point_coords is expected to be wrt. image dimensions.
-
-        Returns:
-          (np.ndarray): The output masks in CxHxW format, where C is the
-            number of masks, and (H, W) is the original image size.
-          (np.ndarray): An array of length C containing the model's
-            predictions for the quality of each mask.
-          (np.ndarray): An array of shape CxHxW, where C is the number
-            of masks and H=W=256. These low resolution logits can be passed to
-            a subsequent iteration as mask input.
-        """
-        # Transform input prompts
-
         mask_input, unnorm_coords, labels, unnorm_box = self._prep_prompts(
-            point_coords, point_labels, box, mask_input, normalize_coords
+            point_coords, point_labels, None, None, True
         )
 
         masks, iou_predictions, low_res_masks = self._predict(
             unnorm_coords,
             labels,
             unnorm_box,
-            mask_input,
-            multimask_output,
-            return_logits=return_logits,
+            None,
+            True,
+            return_logits=False,
         )
 
         masks_np = masks.squeeze(0).float().detach().cpu().numpy()
@@ -444,12 +376,18 @@ if __name__ == "__main__":
     predictor = SAM2ImagePredictor(model)
 
     with torch.no_grad():
-        predictor.set_image(image)
-        masks, ious, _ = predictor.predict(
+        masks, ious, _ = predictor(
+            image=image,
+            org_hw=image.shape[:2],
             point_coords=POINT_COORDS,
             point_labels=POINT_LABELS,
-            multimask_output=True,
         )
+        # predictor.set_image(image)
+        # masks, ious, _ = predictor.predict(
+        #     point_coords=POINT_COORDS,
+        #     point_labels=POINT_LABELS,
+        #     multimask_output=True,
+        # )
 
     fig, axes = plt.subplots(1, masks.shape[0], figsize=(5 * masks.shape[0], 5))
     for i, ax in enumerate(axes):
