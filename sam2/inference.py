@@ -25,6 +25,7 @@ neck = FpnNeck(
         normalize=True,
         scale=None,
         temperature=10000,
+        warmup_cache=False,
     ),
     d_model=256,
     backbone_channel_list=[768, 384, 192, 96],
@@ -75,6 +76,7 @@ memory_encoder = MemoryEncoder(
         normalize=True,
         scale=None,
         temperature=10000,
+        warmup_cache=False,
     ),
     mask_downsampler=MaskDownSampler(
         kernel_size=3,

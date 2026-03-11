@@ -89,3 +89,4 @@ widerface_evaluation
 .DS_Store
 
 NAFNet/experiments/pretrained_models/*.pth
+**/*.pt
