@@ -169,13 +169,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             max_sprinkle_area=max_sprinkle_area,
         )
 
-        # Predictor state
-        self._is_image_set = False
-        self._features = None
-        self._orig_hw = None
-        # Whether the predictor is set for single image or a batch of images
-        self._is_batch = False
-
         # Predictor config
         self.mask_threshold = mask_threshold
 
@@ -197,7 +190,6 @@ class SAM2ImagePredictor(torch.nn.Module):
           with pixel values in [0, 255].
           image_format (str): The color format of the image, in ['RGB', 'BGR'].
         """
-        self.reset_predictor()
         # Transform the image to the form expected by the model
         if isinstance(image, np.ndarray):
             self._orig_hw = [image.shape[:2]]
@@ -224,7 +216,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             for feat, feat_size in zip(vision_feats[::-1], self._bb_feat_sizes[::-1])
         ][::-1]
         self._features = {"image_embed": feats[-1], "high_res_feats": feats[:-1]}
-        self._is_image_set = True
 
     def predict(
         self,
@@ -269,11 +260,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             of masks and H=W=256. These low resolution logits can be passed to
             a subsequent iteration as mask input.
         """
-        if not self._is_image_set:
-            raise RuntimeError(
-                "An image must be set with .set_image(...) before mask prediction."
-            )
-
         # Transform input prompts
 
         mask_input, unnorm_coords, labels, unnorm_box = self._prep_prompts(
@@ -371,10 +357,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             of masks and H=W=256. These low res logits can be passed to
             a subsequent iteration as mask input.
         """
-        if not self._is_image_set:
-            raise RuntimeError(
-                "An image must be set with .set_image(...) before mask prediction."
-            )
 
         if point_coords is not None:
             concat_points = (point_coords, point_labels)
@@ -443,15 +425,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             self._features is not None
         ), "Features must exist if an image has been set."
         return self._features["image_embed"]
-
-    def reset_predictor(self) -> None:
-        """
-        Resets the image embeddings and other state variables.
-        """
-        self._is_image_set = False
-        self._features = None
-        self._orig_hw = None
-        self._is_batch = False
 
 
 if __name__ == "__main__":
