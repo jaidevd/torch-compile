@@ -376,18 +376,16 @@ if __name__ == "__main__":
     predictor = SAM2ImagePredictor(model)
 
     with torch.no_grad():
-        masks, ious, _ = predictor(
-            image=image,
-            org_hw=image.shape[:2],
-            point_coords=POINT_COORDS,
-            point_labels=POINT_LABELS,
+        traced = torch.jit.trace(
+            predictor,
+            (
+                image,
+                image.shape[:2],
+                POINT_COORDS,
+                POINT_LABELS,
+            ),
         )
-        # predictor.set_image(image)
-        # masks, ious, _ = predictor.predict(
-        #     point_coords=POINT_COORDS,
-        #     point_labels=POINT_LABELS,
-        #     multimask_output=True,
-        # )
+        masks, ious, _ = traced(image, image.shape[:2], POINT_COORDS, POINT_LABELS)
 
     fig, axes = plt.subplots(1, masks.shape[0], figsize=(5 * masks.shape[0], 5))
     for i, ax in enumerate(axes):
