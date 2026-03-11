@@ -138,7 +138,7 @@ def show_mask(ax, mask, alpha=0.5):
 
 
 class SAM2ImagePredictor(torch.nn.Module):
-    def __init__(self, sam_model, mask_threshold=0.0, transforms=None):
+    def __init__(self, sam_model, transforms, mask_threshold=0.0):
         super().__init__()
         self.model = sam_model
         self.device = self.model.device
@@ -152,6 +152,7 @@ class SAM2ImagePredictor(torch.nn.Module):
             (128, 128),
             (64, 64),
         ]
+        self._transforms = transforms
 
     def forward(self, image, org_hw, point_coords, point_labels):
         self._orig_hw = [org_hw]
@@ -354,7 +355,7 @@ if __name__ == "__main__":
     )
     image = transforms(image)
 
-    predictor = SAM2ImagePredictor(model)
+    predictor = SAM2ImagePredictor(model, transforms)
 
     with torch.no_grad():
         traced = torch.jit.trace(
