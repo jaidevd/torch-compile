@@ -172,7 +172,7 @@ class SAM2ImagePredictor(torch.nn.Module):
             point_coords, point_labels, None, None, True
         )
 
-        masks, iou_predictions, low_res_masks = self._predict(
+        return self._predict(
             unnorm_coords,
             labels,
             unnorm_box,
@@ -180,11 +180,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             True,
             return_logits=False,
         )
-
-        masks_np = masks.squeeze(0).float().detach().cpu().numpy()
-        iou_predictions_np = iou_predictions.squeeze(0).float().detach().cpu().numpy()
-        low_res_masks_np = low_res_masks.squeeze(0).float().detach().cpu().numpy()
-        return masks_np, iou_predictions_np, low_res_masks_np
 
     def _prep_prompts(
         self, point_coords, point_labels, box, mask_logits, normalize_coords, img_idx=-1
@@ -306,16 +301,7 @@ class SAM2ImagePredictor(torch.nn.Module):
             repeat_image=batched_mode,
             high_res_features=high_res_features,
         )
-
-        # Upscale the masks to the original image resolution
-        masks = self._transforms.postprocess_masks(
-            low_res_masks, self._orig_hw[img_idx]
-        )
-        low_res_masks = torch.clamp(low_res_masks, -32.0, 32.0)
-        if not return_logits:
-            masks = masks > self.mask_threshold
-
-        return masks, iou_predictions, low_res_masks
+        return low_res_masks, iou_predictions
 
     def get_image_embedding(self) -> torch.Tensor:
         """
@@ -343,6 +329,7 @@ if __name__ == "__main__":
     POINT_LABELS = torch.tensor([1])
 
     image = Image.open(IMAGE_PATH).convert("RGB")
+    org_size = image.size[::-1]
 
     sd = torch.load(CHECKPOINT, map_location="cpu", weights_only=True)["model"]
     missing_keys, unexpected_keys = model.load_state_dict(sd)
@@ -353,21 +340,22 @@ if __name__ == "__main__":
         max_hole_area=0,
         max_sprinkle_area=0,
     )
-    image = transforms(image)
+    image_tensor = transforms(image)
 
     predictor = SAM2ImagePredictor(model, transforms)
 
     with torch.no_grad():
-        traced = torch.jit.trace(
-            predictor,
-            (
-                image,
-                torch._shape_as_tensor(image)[:2],
-                POINT_COORDS,
-                POINT_LABELS,
-            ),
+        args = (
+            image_tensor,
+            torch.tensor(org_size),
+            POINT_COORDS,
+            POINT_LABELS,
         )
-        masks, ious, _ = traced(image, image.shape[:2], POINT_COORDS, POINT_LABELS)
+        traced = torch.jit.trace(predictor, args)
+        low_res_masks, ious = traced(*args)
+        masks = transforms.postprocess_masks(low_res_masks, org_size)
+        masks = (masks > 0.0).squeeze(0).float().detach().numpy()
+        ious = ious.squeeze(0).detach().numpy()
 
     fig, axes = plt.subplots(1, masks.shape[0], figsize=(5 * masks.shape[0], 5))
     for i, ax in enumerate(axes):
