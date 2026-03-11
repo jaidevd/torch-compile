@@ -381,7 +381,7 @@ if __name__ == "__main__":
             predictor,
             (
                 image,
-                image.shape[:2],
+                torch._shape_as_tensor(image)[:2],
                 POINT_COORDS,
                 POINT_LABELS,
             ),
