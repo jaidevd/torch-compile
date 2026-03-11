@@ -55,10 +55,8 @@ class SAM2Transforms(nn.Module):
         """
         if normalize:
             assert orig_hw is not None
-            h, w = orig_hw
             coords = coords.clone()
-            coords[..., 0] = coords[..., 0] / w
-            coords[..., 1] = coords[..., 1] / h
+            coords[..., :2] = coords[..., :2] / torch.flip(orig_hw, dims=(0,))
 
         coords = coords * self.resolution  # unnormalize coords
         return coords

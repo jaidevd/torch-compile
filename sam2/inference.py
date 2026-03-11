@@ -190,9 +190,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             assert (
                 point_labels is not None
             ), "point_labels must be supplied if point_coords is supplied."
-            point_coords = torch.as_tensor(
-                point_coords, dtype=torch.float, device=self.device
-            )
             unnorm_coords = self._transforms.transform_coords(
                 point_coords, normalize=normalize_coords, orig_hw=self._orig_hw[img_idx]
             )
@@ -325,7 +322,7 @@ if __name__ == "__main__":
     IMAGE_PATH = "truck.jpg"
 
     # Foreground point on the truck
-    POINT_COORDS = torch.tensor([[500, 375]]).to("cpu")
+    POINT_COORDS = torch.tensor([[500, 375]], dtype=torch.float)
     POINT_LABELS = torch.tensor([1])
 
     image = Image.open(IMAGE_PATH).convert("RGB")
