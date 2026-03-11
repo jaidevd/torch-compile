@@ -296,7 +296,6 @@ class SAM2ImagePredictor(torch.nn.Module):
             sparse_prompt_embeddings=sparse_embeddings,
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=multimask_output,
-            repeat_image=batched_mode,
             high_res_features=high_res_features,
         )
         return low_res_masks, iou_predictions
