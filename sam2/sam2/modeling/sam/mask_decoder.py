@@ -114,7 +114,7 @@ class MaskDecoder(nn.Module):
         sparse_prompt_embeddings: torch.Tensor,
         dense_prompt_embeddings: torch.Tensor,
         multimask_output: bool,
-        repeat_image: bool,
+        # repeat_image: bool,
         high_res_features: Optional[List[torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -138,7 +138,7 @@ class MaskDecoder(nn.Module):
             image_pe=image_pe,
             sparse_prompt_embeddings=sparse_prompt_embeddings,
             dense_prompt_embeddings=dense_prompt_embeddings,
-            repeat_image=repeat_image,
+            # repeat_image=repeat_image,
             high_res_features=high_res_features,
         )
 
@@ -171,7 +171,7 @@ class MaskDecoder(nn.Module):
         image_pe: torch.Tensor,
         sparse_prompt_embeddings: torch.Tensor,
         dense_prompt_embeddings: torch.Tensor,
-        repeat_image: bool,
+        # repeat_image: bool,
         high_res_features: Optional[List[torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Predicts masks. See 'forward' for more details."""
@@ -197,11 +197,13 @@ class MaskDecoder(nn.Module):
         tokens = torch.cat((output_tokens, sparse_prompt_embeddings), dim=1)
 
         # Expand per-image data in batch direction to be per-mask
-        if repeat_image:
-            src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
-        else:
-            assert image_embeddings.shape[0] == tokens.shape[0]
-            src = image_embeddings
+        # if repeat_image:
+        #     src = torch.repeat_interleave(image_embeddings, tokens.shape[0], dim=0)
+        # else:
+        #     assert image_embeddings.shape[0] == tokens.shape[0]
+        #     src = image_embeddings
+        assert image_embeddings.shape[0] == tokens.shape[0]
+        src = image_embeddings
         src = src + dense_prompt_embeddings
         assert (
             image_pe.size(0) == 1

@@ -353,7 +353,7 @@ class SAM2Base(torch.nn.Module):
             sparse_prompt_embeddings=sparse_embeddings,
             dense_prompt_embeddings=dense_embeddings,
             multimask_output=multimask_output,
-            repeat_image=False,  # the image is already batched
+            # repeat_image=False,  # the image is already batched
             high_res_features=high_res_features,
         )
         if self.pred_obj_scores:
