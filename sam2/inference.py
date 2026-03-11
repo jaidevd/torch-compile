@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+from torchvision.transforms.functional import pil_to_tensor
 from PIL import Image
 
 from sam2.utils.transforms import SAM2Transforms
@@ -365,9 +366,9 @@ if __name__ == "__main__":
     IMAGE_PATH = "truck.jpg"
 
     # Foreground point on the truck
-    POINT_COORDS = np.array([[500, 375]], dtype=np.float32)
-    POINT_LABELS = np.array([1], dtype=np.int32)
-    image = np.array(Image.open(IMAGE_PATH).convert("RGB"))
+    POINT_COORDS = torch.tensor([[500, 375]])
+    POINT_LABELS = torch.tensor([1])
+    image = pil_to_tensor(Image.open(IMAGE_PATH).convert("RGB"))
 
     sd = torch.load(CHECKPOINT, map_location="cpu", weights_only=True)["model"]
     missing_keys, unexpected_keys = model.load_state_dict(sd)
