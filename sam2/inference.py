@@ -325,7 +325,7 @@ if __name__ == "__main__":
     IMAGE_PATH = "truck.jpg"
 
     # Foreground point on the truck
-    POINT_COORDS = torch.tensor([[500, 375]])
+    POINT_COORDS = torch.tensor([[500, 375]]).to("cpu")
     POINT_LABELS = torch.tensor([1])
 
     image = Image.open(IMAGE_PATH).convert("RGB")
