@@ -193,7 +193,8 @@ class SAM2ImagePredictor(torch.nn.Module):
             unnorm_coords = self._transforms.transform_coords(
                 point_coords, normalize=normalize_coords, orig_hw=self._orig_hw[img_idx]
             )
-            labels = torch.as_tensor(point_labels, dtype=torch.int, device=self.device)
+            # labels = torch.as_tensor(point_labels, dtype=torch.int, device=self.device)
+            labels = point_labels
             if len(unnorm_coords.shape) == 2:
                 unnorm_coords, labels = unnorm_coords[None, ...], labels[None, ...]
         if box is not None:
@@ -323,7 +324,7 @@ if __name__ == "__main__":
 
     # Foreground point on the truck
     POINT_COORDS = torch.tensor([[500, 375]], dtype=torch.float)
-    POINT_LABELS = torch.tensor([1])
+    POINT_LABELS = torch.tensor([1], dtype=torch.int)
 
     image = Image.open(IMAGE_PATH).convert("RGB")
     org_size = image.size[::-1]
