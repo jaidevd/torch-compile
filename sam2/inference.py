@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from torchvision.transforms.functional import pil_to_tensor
 from PIL import Image
 
 from sam2.utils.transforms import SAM2Transforms
@@ -139,36 +138,10 @@ def show_mask(ax, mask, alpha=0.5):
 
 
 class SAM2ImagePredictor(torch.nn.Module):
-    def __init__(
-        self,
-        sam_model: SAM2Base,
-        mask_threshold=0.0,
-        max_hole_area=0.0,
-        max_sprinkle_area=0.0,
-        **kwargs,
-    ) -> None:
-        """
-        Uses SAM-2 to calculate the image embedding for an image, and then
-        allow repeated, efficient mask prediction given prompts.
-
-        Arguments:
-          sam_model (Sam-2): The model to use for mask prediction.
-          mask_threshold (float): The threshold to use when converting mask logits
-            to binary masks. Masks are thresholded at 0 by default.
-          max_hole_area (int): If max_hole_area > 0, we fill small holes in up to
-            the maximum area of max_hole_area in low_res_masks.
-          max_sprinkle_area (int): If max_sprinkle_area > 0, we remove small sprinkles up to
-            the maximum area of max_sprinkle_area in low_res_masks.
-        """
+    def __init__(self, sam_model, mask_threshold=0.0, transforms=None):
         super().__init__()
         self.model = sam_model
         self.device = self.model.device
-        self._transforms = SAM2Transforms(
-            resolution=self.model.image_size,
-            mask_threshold=mask_threshold,
-            max_hole_area=max_hole_area,
-            max_sprinkle_area=max_sprinkle_area,
-        )
 
         # Predictor config
         self.mask_threshold = mask_threshold
@@ -182,8 +155,7 @@ class SAM2ImagePredictor(torch.nn.Module):
 
     def forward(self, image, org_hw, point_coords, point_labels):
         self._orig_hw = [org_hw]
-        input_image = self._transforms(image)
-        input_image = input_image[None, ...].to(self.device)
+        input_image = image[None, ...].to(self.device)
         backbone_out = self.model.forward_image(input_image)
         _, vision_feats, _, _ = self.model._prepare_backbone_features(backbone_out)
         # Add no_mem_embed, which is added to the lowest rest feat. map during training on videos
@@ -368,11 +340,19 @@ if __name__ == "__main__":
     # Foreground point on the truck
     POINT_COORDS = torch.tensor([[500, 375]])
     POINT_LABELS = torch.tensor([1])
-    image = pil_to_tensor(Image.open(IMAGE_PATH).convert("RGB"))
+
+    image = Image.open(IMAGE_PATH).convert("RGB")
 
     sd = torch.load(CHECKPOINT, map_location="cpu", weights_only=True)["model"]
     missing_keys, unexpected_keys = model.load_state_dict(sd)
     model = model.to("cpu").eval()
+    transforms = SAM2Transforms(
+        resolution=model.image_size,
+        mask_threshold=0,
+        max_hole_area=0,
+        max_sprinkle_area=0,
+    )
+    image = transforms(image)
 
     predictor = SAM2ImagePredictor(model)
 
