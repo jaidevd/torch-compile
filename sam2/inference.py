@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -13,14 +11,6 @@ from sam2.modeling.position_encoding import PositionEmbeddingSine
 from sam2.modeling.memory_attention import MemoryAttention, MemoryAttentionLayer
 from sam2.modeling.sam.transformer import RoPEAttention
 from sam2.modeling.memory_encoder import MemoryEncoder, MaskDownSampler, Fuser, CXBlock
-
-CHECKPOINT = "checkpoints/sam2.1_hiera_tiny.pt"
-IMAGE_PATH = "truck.jpg"
-
-# Foreground point on the truck
-POINT_COORDS = np.array([[500, 375]], dtype=np.float32)
-POINT_LABELS = np.array([1], dtype=np.int32)
-
 
 trunk = Hiera(
     embed_dim=96,
@@ -138,10 +128,6 @@ model = SAM2Base(
         "dynamic_multimask_stability_thresh": 0.98,
     },
 )
-sd = torch.load(CHECKPOINT, map_location="cpu", weights_only=True)["model"]
-missing_keys, unexpected_keys = model.load_state_dict(sd)
-
-model = model.to("cpu").eval()
 
 
 def show_mask(ax, mask, alpha=0.5):
@@ -151,10 +137,7 @@ def show_mask(ax, mask, alpha=0.5):
     ax.imshow(overlay)
 
 
-image = np.array(Image.open(IMAGE_PATH).convert("RGB"))
-
-
-class SAM2ImagePredictor:
+class SAM2ImagePredictor(torch.nn.Module):
     def __init__(
         self,
         sam_model: SAM2Base,
@@ -178,6 +161,7 @@ class SAM2ImagePredictor:
         """
         super().__init__()
         self.model = sam_model
+        self.device = self.model.device
         self._transforms = SAM2Transforms(
             resolution=self.model.image_size,
             mask_threshold=mask_threshold,
@@ -201,23 +185,6 @@ class SAM2ImagePredictor:
             (128, 128),
             (64, 64),
         ]
-
-    @classmethod
-    def from_pretrained(cls, model_id: str, **kwargs) -> "SAM2ImagePredictor":
-        """
-        Load a pretrained model from the Hugging Face hub.
-
-        Arguments:
-          model_id (str): The Hugging Face repository ID.
-          **kwargs: Additional arguments to pass to the model constructor.
-
-        Returns:
-          (SAM2ImagePredictor): The loaded model.
-        """
-        from sam2.build_sam import build_sam2_hf
-
-        sam_model = build_sam2_hf(model_id, **kwargs)
-        return cls(sam_model, **kwargs)
 
     @torch.no_grad()
     def set_image(self, image) -> None:
@@ -258,107 +225,6 @@ class SAM2ImagePredictor:
         ][::-1]
         self._features = {"image_embed": feats[-1], "high_res_feats": feats[:-1]}
         self._is_image_set = True
-
-    @torch.no_grad()
-    def set_image_batch(self, image_list) -> None:
-        """
-        Calculates the image embeddings for the provided image batch, allowing
-        masks to be predicted with the 'predict_batch' method.
-
-        Arguments:
-          image_list (List[np.ndarray]): The input images to embed in RGB format. The image should be in HWC format if np.ndarray
-          with pixel values in [0, 255].
-        """
-        self.reset_predictor()
-        assert isinstance(image_list, list)
-        self._orig_hw = []
-        for image in image_list:
-            assert isinstance(
-                image, np.ndarray
-            ), "Images are expected to be an np.ndarray in RGB format, and of shape  HWC"
-            self._orig_hw.append(image.shape[:2])
-        # Transform the image to the form expected by the model
-        img_batch = self._transforms.forward_batch(image_list)
-        img_batch = img_batch.to(self.device)
-        batch_size = img_batch.shape[0]
-        assert (
-            len(img_batch.shape) == 4 and img_batch.shape[1] == 3
-        ), f"img_batch must be of size Bx3xHxW, got {img_batch.shape}"
-        backbone_out = self.model.forward_image(img_batch)
-        _, vision_feats, _, _ = self.model._prepare_backbone_features(backbone_out)
-        # Add no_mem_embed, which is added to the lowest rest feat. map during training on videos
-        if self.model.directly_add_no_mem_embed:
-            vision_feats[-1] = vision_feats[-1] + self.model.no_mem_embed
-
-        feats = [
-            feat.permute(1, 2, 0).view(batch_size, -1, *feat_size)
-            for feat, feat_size in zip(vision_feats[::-1], self._bb_feat_sizes[::-1])
-        ][::-1]
-        self._features = {"image_embed": feats[-1], "high_res_feats": feats[:-1]}
-        self._is_image_set = True
-        self._is_batch = True
-
-    def predict_batch(
-        self,
-        point_coords_batch=None,
-        point_labels_batch=None,
-        box_batch=None,
-        mask_input_batch=None,
-        multimask_output: bool = True,
-        return_logits: bool = False,
-        normalize_coords=True,
-    ):
-        """This function is very similar to predict(...), however it is used for batched mode, when the model is expected to generate predictions on multiple images.
-        It returns a tuple of lists of masks, ious, and low_res_masks_logits.
-        """
-        assert self._is_batch, "This function should only be used when in batched mode"
-        if not self._is_image_set:
-            raise RuntimeError(
-                "An image must be set with .set_image_batch(...) before mask prediction."
-            )
-        num_images = len(self._features["image_embed"])
-        all_masks = []
-        all_ious = []
-        all_low_res_masks = []
-        for img_idx in range(num_images):
-            # Transform input prompts
-            point_coords = (
-                point_coords_batch[img_idx] if point_coords_batch is not None else None
-            )
-            point_labels = (
-                point_labels_batch[img_idx] if point_labels_batch is not None else None
-            )
-            box = box_batch[img_idx] if box_batch is not None else None
-            mask_input = (
-                mask_input_batch[img_idx] if mask_input_batch is not None else None
-            )
-            mask_input, unnorm_coords, labels, unnorm_box = self._prep_prompts(
-                point_coords,
-                point_labels,
-                box,
-                mask_input,
-                normalize_coords,
-                img_idx=img_idx,
-            )
-            masks, iou_predictions, low_res_masks = self._predict(
-                unnorm_coords,
-                labels,
-                unnorm_box,
-                mask_input,
-                multimask_output,
-                return_logits=return_logits,
-                img_idx=img_idx,
-            )
-            masks_np = masks.squeeze(0).float().detach().cpu().numpy()
-            iou_predictions_np = (
-                iou_predictions.squeeze(0).float().detach().cpu().numpy()
-            )
-            low_res_masks_np = low_res_masks.squeeze(0).float().detach().cpu().numpy()
-            all_masks.append(masks_np)
-            all_ious.append(iou_predictions_np)
-            all_low_res_masks.append(low_res_masks_np)
-
-        return all_masks, all_ious, all_low_res_masks
 
     def predict(
         self,
@@ -578,10 +444,6 @@ class SAM2ImagePredictor:
         ), "Features must exist if an image has been set."
         return self._features["image_embed"]
 
-    @property
-    def device(self) -> torch.device:
-        return self.model.device
-
     def reset_predictor(self) -> None:
         """
         Resets the image embeddings and other state variables.
@@ -592,23 +454,37 @@ class SAM2ImagePredictor:
         self._is_batch = False
 
 
-predictor = SAM2ImagePredictor(model)
+if __name__ == "__main__":
 
-with torch.no_grad():
-    predictor.set_image(image)
-    masks, ious, _ = predictor.predict(
-        point_coords=POINT_COORDS,
-        point_labels=POINT_LABELS,
-        multimask_output=True,
-    )
+    CHECKPOINT = "checkpoints/sam2.1_hiera_tiny.pt"
+    IMAGE_PATH = "truck.jpg"
 
-fig, axes = plt.subplots(1, masks.shape[0], figsize=(5 * masks.shape[0], 5))
-for i, ax in enumerate(axes):
-    ax.imshow(image)
-    show_mask(ax, masks[i])
-    ax.plot(*POINT_COORDS[0], "r*", markersize=12)
-    ax.set_title(f"Mask {i}  IoU={ious[i]:.2f}")
-    ax.axis("off")
+    # Foreground point on the truck
+    POINT_COORDS = np.array([[500, 375]], dtype=np.float32)
+    POINT_LABELS = np.array([1], dtype=np.int32)
+    image = np.array(Image.open(IMAGE_PATH).convert("RGB"))
 
-plt.tight_layout()
-plt.show()
+    sd = torch.load(CHECKPOINT, map_location="cpu", weights_only=True)["model"]
+    missing_keys, unexpected_keys = model.load_state_dict(sd)
+    model = model.to("cpu").eval()
+
+    predictor = SAM2ImagePredictor(model)
+
+    with torch.no_grad():
+        predictor.set_image(image)
+        masks, ious, _ = predictor.predict(
+            point_coords=POINT_COORDS,
+            point_labels=POINT_LABELS,
+            multimask_output=True,
+        )
+
+    fig, axes = plt.subplots(1, masks.shape[0], figsize=(5 * masks.shape[0], 5))
+    for i, ax in enumerate(axes):
+        ax.imshow(image)
+        show_mask(ax, masks[i])
+        ax.plot(*POINT_COORDS[0], "r*", markersize=12)
+        ax.set_title(f"Mask {i}  IoU={ious[i]:.2f}")
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.show()
